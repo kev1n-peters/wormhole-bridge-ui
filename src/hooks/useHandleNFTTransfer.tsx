@@ -10,10 +10,13 @@ import {
   parseSequenceFromLogEth,
   parseSequenceFromLogSolana,
   uint8ArrayToHex,
+  CHAIN_ID_APTOS,
+  parseSequenceFromLogAptos,
 } from "@certusone/wormhole-sdk";
 import {
   transferFromEth,
   transferFromSolana,
+  transferFromAptos,
 } from "@certusone/wormhole-sdk/lib/esm/nft_bridge";
 import { Alert } from "@material-ui/lab";
 import { WalletContextState } from "@solana/wallet-adapter-react";
@@ -53,6 +56,13 @@ import {
 import parseError from "../utils/parseError";
 import { signSendAndConfirm } from "../utils/solana";
 import useNFTTargetAddressHex from "./useNFTTargetAddress";
+import { Types } from "aptos";
+import {
+  getAptosClient,
+  getEmitterAddressAndSequenceFromResult,
+  waitForSignAndSubmitTransaction,
+} from "../utils/aptos";
+import { useAptosContext } from "../contexts/AptosWalletContext";
 
 async function evm(
   dispatch: any,
@@ -183,6 +193,70 @@ async function solana(
   }
 }
 
+async function aptos(
+  dispatch: any,
+  enqueueSnackbar: any,
+  creatorAddress: string,
+  collectionName: string,
+  tokenName: string,
+  propertyVersion: number,
+  targetChain: ChainId,
+  targetAddress: Uint8Array,
+  signAndSubmitTransaction: (
+    transaction: Types.TransactionPayload,
+    options?: any
+  ) => Promise<{
+    hash: string;
+  }>
+) {
+  dispatch(setIsSending(true));
+  const nftBridgeAddress = getNFTBridgeAddressForChain(CHAIN_ID_APTOS);
+  try {
+    const transferPayload = transferFromAptos(
+      nftBridgeAddress,
+      creatorAddress,
+      collectionName,
+      tokenName,
+      propertyVersion,
+      targetChain,
+      targetAddress
+    );
+    const hash = await waitForSignAndSubmitTransaction(
+      transferPayload,
+      signAndSubmitTransaction
+    );
+    dispatch(setTransferTx({ id: hash, block: 1 }));
+    enqueueSnackbar(null, {
+      content: <Alert severity="success">Transaction confirmed</Alert>,
+    });
+    const result = (await getAptosClient().waitForTransactionWithResult(
+      hash
+    )) as Types.UserTransaction;
+    const { emitterAddress, sequence } =
+      getEmitterAddressAndSequenceFromResult(result);
+    enqueueSnackbar(null, {
+      content: <Alert severity="info">Fetching VAA</Alert>,
+    });
+    console.log(emitterAddress, sequence);
+    const { vaaBytes } = await getSignedVAAWithRetry(
+      WORMHOLE_RPC_HOSTS,
+      CHAIN_ID_APTOS,
+      emitterAddress,
+      sequence
+    );
+    dispatch(setSignedVAAHex(uint8ArrayToHex(vaaBytes)));
+    enqueueSnackbar(null, {
+      content: <Alert severity="success">Fetched Signed VAA</Alert>,
+    });
+  } catch (e) {
+    console.error(e);
+    enqueueSnackbar(null, {
+      content: <Alert severity="error">{parseError(e)}</Alert>,
+    });
+    dispatch(setIsSending(false));
+  }
+}
+
 export function useHandleNFTTransfer() {
   const dispatch = useDispatch();
   const { enqueueSnackbar } = useSnackbar();
@@ -203,9 +277,12 @@ export function useHandleNFTTransfer() {
   const { signer } = useEthereumProvider();
   const solanaWallet = useSolanaWallet();
   const solPK = solanaWallet?.publicKey;
+  const { account: aptosAccount, signAndSubmitTransaction } = useAptosContext();
+  const aptosAddress = aptosAccount?.address?.toString();
   const sourceParsedTokenAccount = useSelector(
     selectNFTSourceParsedTokenAccount
   );
+  console.log(sourceParsedTokenAccount);
   const sourceTokenPublicKey = sourceParsedTokenAccount?.publicKey;
   const disabled = !isTargetComplete || isSending || isSendComplete;
   const handleTransferClick = useCallback(() => {
@@ -248,7 +325,31 @@ export function useHandleNFTTransfer() {
         originChain,
         originTokenId
       );
-    } else {
+    } else if (
+      sourceChain === CHAIN_ID_APTOS &&
+      !!aptosAddress &&
+      !!targetAddress &&
+      nftSourceParsedTokenAccount?.collectionName &&
+      nftSourceParsedTokenAccount?.name &&
+      nftSourceParsedTokenAccount?.propertyVersion !== undefined
+    ) {
+      const {
+        mintKey: creatorAddress,
+        collectionName,
+        name: tokenName,
+        propertyVersion,
+      } = nftSourceParsedTokenAccount;
+      aptos(
+        dispatch,
+        enqueueSnackbar,
+        creatorAddress,
+        collectionName,
+        tokenName,
+        propertyVersion,
+        targetChain,
+        targetAddress,
+        signAndSubmitTransaction
+      );
     }
   }, [
     dispatch,

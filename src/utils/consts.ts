@@ -346,7 +346,8 @@ export const CHAINS_WITH_NFT_SUPPORT = CHAINS.filter(
     id === CHAIN_ID_CELO ||
     id === CHAIN_ID_NEON ||
     id === CHAIN_ID_MOONBEAM ||
-    id === CHAIN_ID_ARBITRUM
+    id === CHAIN_ID_ARBITRUM ||
+    id === CHAIN_ID_APTOS
 );
 export type ChainsById = { [key in ChainId]: ChainInfo };
 export const CHAINS_BY_ID: ChainsById = CHAINS.reduce((obj, chain) => {

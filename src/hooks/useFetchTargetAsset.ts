@@ -26,6 +26,7 @@ import {
 import {
   getForeignAssetEth as getForeignAssetEthNFT,
   getForeignAssetSol as getForeignAssetSolNFT,
+  getForeignAssetAptos as getForeignAssetAptosNFT,
 } from "@certusone/wormhole-sdk/lib/esm/nft_bridge";
 import { BigNumber } from "@ethersproject/bignumber";
 import { arrayify } from "@ethersproject/bytes";
@@ -410,18 +411,30 @@ function useFetchTargetAsset(nft?: boolean) {
       if (targetChain === CHAIN_ID_APTOS && originChain && originAsset) {
         dispatch(setTargetAsset(fetchDataWrapper()));
         try {
-          const asset = await getForeignAssetAptos(
-            getAptosClient(),
-            getTokenBridgeAddressForChain(targetChain),
-            originChain,
-            originAsset
-          );
+          const asset = nft
+            ? await getForeignAssetAptosNFT(
+                getAptosClient(),
+                getNFTBridgeAddressForChain(targetChain),
+                originChain,
+                // TODO: we shouldn't have to do this
+                "0x" + originAsset
+              )
+            : await getForeignAssetAptos(
+                getAptosClient(),
+                getTokenBridgeAddressForChain(targetChain),
+                originChain,
+                originAsset
+              );
           if (!cancelled) {
             dispatch(
               setTargetAsset(
                 receiveDataWrapper({
                   doesExist: !!asset,
-                  address: asset ? `${ensureHexPrefix(asset)}::coin::T` : null,
+                  address:
+                  // TODO: what should we set for Aptos NFTs?
+                    asset && !nft
+                      ? `${ensureHexPrefix(asset as string)}::coin::T`
+                      : null,
                 })
               )
             );

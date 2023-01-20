@@ -135,6 +135,7 @@ import {
 } from "../utils/solana";
 import { fetchSingleMetadata as fetchSingleMetadataAlgo } from "./useAlgoMetadata";
 import { AptosCoinResourceReturn } from "./useAptosMetadata";
+import { TokenClient, TokenTypes } from "aptos";
 
 export function createParsedTokenAccount(
   publicKey: string,
@@ -178,7 +179,9 @@ export function createNFTParsedTokenAccount(
   image?: string,
   image_256?: string,
   nftName?: string,
-  description?: string
+  description?: string,
+  collectionName?: string,
+  propertyVersion?: number
 ): NFTParsedTokenAccount {
   return {
     publicKey,
@@ -197,6 +200,8 @@ export function createNFTParsedTokenAccount(
     name,
     nftName,
     description,
+    collectionName,
+    propertyVersion,
   };
 }
 
@@ -561,7 +566,7 @@ const createNativeMoonbeamParsedTokenAccount = (
         return createParsedTokenAccount(
           signerAddress, //public key
           WGLMR_ADDRESS, //Mint key, On the other side this will be wneon, so this is hopefully a white lie.
-          balanceInWei.toString(), //amount, in wei
+         balanceInWei.toString(), //amount, in wei
           WGLMR_DECIMALS,
           parseFloat(balanceInEth), //This loses precision, but is a limitation of the current datamodel. This field is essentially deprecated
           balanceInEth.toString(), //This is the actual display field, which has full precision.
@@ -885,11 +890,86 @@ const getAptosParsedTokenAccounts = async (
     nft ? fetchSourceParsedTokenAccountsNFT() : fetchSourceParsedTokenAccounts()
   );
   try {
+    const client = getAptosClient();
     if (nft) {
-      dispatch(receiveSourceParsedTokenAccountsNFT([]));
+      const tokenStore = await client.getAccountResource(
+        walletAddress,
+        "0x3::token::TokenStore"
+      );
+      let parsedTokenAccountsNFT: NFTParsedTokenAccount[] = [];
+      if (tokenStore) {
+        //@ts-ignore
+        const counter = parseInt(tokenStore.data.deposit_events.counter);
+        const events = await client.getEventsByEventHandle(
+          walletAddress,
+          "0x3::token::TokenStore",
+          "deposit_events",
+          {
+            // TOOD: why are we passing 1 here?
+            limit: counter === 0 ? 1 : counter,
+          }
+        );
+        const ids = [...new Set(events.map((event) => event.data.id))];
+        const data: TokenTypes.Token[] = [];
+        const tokenClient = new TokenClient(client);
+        await Promise.all(
+          ids.map(async (id) => {
+            const token = await tokenClient.getTokenForAccount(
+              walletAddress,
+              id
+            );
+            if (token) {
+              data.push(token);
+            }
+          })
+        );
+        const result = data.filter((token) => {
+          return token.amount !== "0";
+        });
+        const final = result.filter(
+          (value, index) =>
+            index ===
+            result.findIndex(
+              (t) => t.id.token_data_id.name === value.id.token_data_id.name
+            )
+        );
+        final.sort((a, b) =>
+          a.id.token_data_id.name.localeCompare(b.id.token_data_id.name)
+        );
+        parsedTokenAccountsNFT = await Promise.all(
+          final.map(async (token) => {
+            const { creator, collection, name } = token.id.token_data_id;
+            const tokenData = await tokenClient.getTokenData(
+              creator,
+              collection,
+              name
+            );
+            return createNFTParsedTokenAccount(
+              walletAddress,
+              creator,
+              token.amount,
+              0,
+              Number(token.amount),
+              token.amount,
+              name,
+              undefined,
+              name,
+              tokenData.uri,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              collection,
+              Number(token.id.property_version)
+            );
+          })
+        );
+      }
+      dispatch(receiveSourceParsedTokenAccountsNFT(parsedTokenAccountsNFT));
       return;
     }
-    const client = getAptosClient();
     const resources = await client.getAccountResources(walletAddress);
     const coinResources = resources.filter((r) =>
       r.type.startsWith("0x1::coin::CoinStore<")

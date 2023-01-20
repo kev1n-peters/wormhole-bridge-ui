@@ -1,7 +1,14 @@
 import { CHAIN_ID_APTOS } from "@certusone/wormhole-sdk";
-import { AptosClient, Types } from "aptos";
+import {
+  AptosClient,
+  HexString,
+  MaybeHexString,
+  TokenTypes,
+  Types,
+} from "aptos";
 import { hexZeroPad } from "ethers/lib/utils";
 import { APTOS_URL, getBridgeAddressForChain } from "./consts";
+import { MoveStructTag, TableItemRequest } from "aptos/src/generated";
 
 export enum AptosNetwork {
   Testnet = "Testnet",

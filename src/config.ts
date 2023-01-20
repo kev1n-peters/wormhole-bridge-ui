@@ -37,10 +37,10 @@ export const CHAIN_CONFIG_MAP: ChainConfigMap = {
       text: "Using a Ledger device with the Keplr wallet extension to sign transactions on Injective is currently unsupported.",
     },
   },
-  [CHAIN_ID_ARBITRUM]: {
-    disableTransfers: true,
-    warningMessage: {
-      text: "Wormhole Network and Portal have paused Arbitrum support temporarily.",
-    },
-  }
+  //[CHAIN_ID_ARBITRUM]: {
+  //  disableTransfers: true,
+  //  warningMessage: {
+  //    text: "Wormhole Network and Portal have paused Arbitrum support temporarily.",
+  //  },
+  //}
 };

@@ -20,6 +20,8 @@ export default function TargetPreview() {
   const targetAddress = useSelector(selectNFTTargetAddressHex);
   const targetAddressNative = hexToNativeString(targetAddress, targetChain);
 
+  console.log("targetAddressNative", targetAddressNative);
+
   const explainerContent =
     targetChain && targetAddressNative ? (
       <>

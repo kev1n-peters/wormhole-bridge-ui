@@ -20,6 +20,7 @@ import {
 import {
   getOriginalAssetEth as getOriginalAssetEthNFT,
   getOriginalAssetSol as getOriginalAssetSolNFT,
+  getOriginalAssetAptos as getOriginalAssetAptosNFT,
 } from "@certusone/wormhole-sdk/lib/esm/nft_bridge";
 import { Connection } from "@solana/web3.js";
 import { LCDClient } from "@terra-money/terra.js";
@@ -167,12 +168,19 @@ function useCheckIfWormholeWrapped(nft?: boolean) {
       }
       if (sourceChain === CHAIN_ID_APTOS && sourceAsset) {
         try {
+          console.log("sourceAsset", sourceAsset);
           const wrappedInfo = makeStateSafe(
-            await getOriginalAssetAptos(
-              getAptosClient(),
-              getTokenBridgeAddressForChain(CHAIN_ID_APTOS),
-              sourceAsset
-            )
+            await (nft
+              ? getOriginalAssetAptosNFT(
+                  getAptosClient(),
+                  getNFTBridgeAddressForChain(CHAIN_ID_APTOS),
+                  sourceAsset // TODO: is this right?
+                )
+              : getOriginalAssetAptos(
+                  getAptosClient(),
+                  getTokenBridgeAddressForChain(CHAIN_ID_APTOS),
+                  sourceAsset
+                ))
           );
           if (!cancelled) {
             dispatch(setSourceWormholeWrappedInfo(wrappedInfo));

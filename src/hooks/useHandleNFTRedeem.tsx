@@ -10,11 +10,13 @@ import {
   parseNFTPayload,
   parseVaa,
   postVaaSolanaWithRetry,
+  CHAIN_ID_APTOS,
 } from "@certusone/wormhole-sdk";
 import {
   createMetaOnSolana,
   getForeignAssetSol,
   isNFTVAASolanaNative,
+  redeemOnAptos,
   redeemOnEth,
   redeemOnSolana,
 } from "@certusone/wormhole-sdk/lib/esm/nft_bridge";
@@ -44,6 +46,9 @@ import { getMetadataAddress } from "../utils/metaplex";
 import parseError from "../utils/parseError";
 import { signSendAndConfirm } from "../utils/solana";
 import useNFTSignedVAA from "./useNFTSignedVAA";
+import { Types } from "aptos";
+import { waitForSignAndSubmitTransaction } from "../utils/aptos";
+import { useAptosContext } from "../contexts/AptosWalletContext";
 
 async function evm(
   dispatch: any,
@@ -160,6 +165,38 @@ async function solana(
   }
 }
 
+async function aptos(
+  dispatch: any,
+  enqueueSnackbar: any,
+  signedVAA: Uint8Array,
+  signAndSubmitTransaction: (
+    transaction: Types.TransactionPayload,
+    options?: any
+  ) => Promise<{
+    hash: string;
+  }>
+) {
+  dispatch(setIsRedeeming(true));
+  const nftBridgeAddress = getNFTBridgeAddressForChain(CHAIN_ID_APTOS);
+  try {
+    const msg = await redeemOnAptos(nftBridgeAddress, signedVAA);
+    //msg.arguments[0] = Array.from(msg.arguments[0]);
+    const result = await waitForSignAndSubmitTransaction(
+      msg,
+      signAndSubmitTransaction
+    );
+    dispatch(setRedeemTx({ id: result, block: 1 }));
+    enqueueSnackbar(null, {
+      content: <Alert severity="success">Transaction confirmed</Alert>,
+    });
+  } catch (e) {
+    enqueueSnackbar(null, {
+      content: <Alert severity="error">{parseError(e)}</Alert>,
+    });
+    dispatch(setIsRedeeming(false));
+  }
+}
+
 export function useHandleNFTRedeem() {
   const dispatch = useDispatch();
   const { enqueueSnackbar } = useSnackbar();
@@ -167,6 +204,8 @@ export function useHandleNFTRedeem() {
   const solanaWallet = useSolanaWallet();
   const solPK = solanaWallet?.publicKey;
   const { signer } = useEthereumProvider();
+  const { account: aptosAccount, signAndSubmitTransaction } = useAptosContext();
+  const aptosAddress = aptosAccount?.address?.toString();
   const signedVAA = useNFTSignedVAA();
   const isRedeeming = useSelector(selectNFTIsRedeeming);
   const handleRedeemClick = useCallback(() => {
@@ -185,7 +224,8 @@ export function useHandleNFTRedeem() {
         solPK.toString(),
         signedVAA
       );
-    } else {
+    } else if (targetChain === CHAIN_ID_APTOS && !!aptosAddress && signedVAA) {
+      aptos(dispatch, enqueueSnackbar, signedVAA, signAndSubmitTransaction);
     }
   }, [
     dispatch,
