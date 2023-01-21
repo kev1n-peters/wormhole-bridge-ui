@@ -135,7 +135,7 @@ import {
 } from "../utils/solana";
 import { fetchSingleMetadata as fetchSingleMetadataAlgo } from "./useAlgoMetadata";
 import { AptosCoinResourceReturn } from "./useAptosMetadata";
-import { TokenClient, TokenTypes } from "aptos";
+import { ApiError, TokenClient, TokenTypes } from "aptos";
 
 export function createParsedTokenAccount(
   publicKey: string,
@@ -566,7 +566,7 @@ const createNativeMoonbeamParsedTokenAccount = (
         return createParsedTokenAccount(
           signerAddress, //public key
           WGLMR_ADDRESS, //Mint key, On the other side this will be wneon, so this is hopefully a white lie.
-         balanceInWei.toString(), //amount, in wei
+          balanceInWei.toString(), //amount, in wei
           WGLMR_DECIMALS,
           parseFloat(balanceInEth), //This loses precision, but is a limitation of the current datamodel. This field is essentially deprecated
           balanceInEth.toString(), //This is the actual display field, which has full precision.
@@ -896,7 +896,7 @@ const getAptosParsedTokenAccounts = async (
         walletAddress,
         "0x3::token::TokenStore"
       );
-      let parsedTokenAccountsNFT: NFTParsedTokenAccount[] = [];
+      const parsedTokenAccountsNFT: NFTParsedTokenAccount[] = [];
       if (tokenStore) {
         //@ts-ignore
         const counter = parseInt(tokenStore.data.deposit_events.counter);
@@ -905,8 +905,7 @@ const getAptosParsedTokenAccounts = async (
           "0x3::token::TokenStore",
           "deposit_events",
           {
-            // TOOD: why are we passing 1 here?
-            limit: counter === 0 ? 1 : counter,
+            limit: counter,
           }
         );
         const ids = [...new Set(events.map((event) => event.data.id))];
@@ -936,91 +935,99 @@ const getAptosParsedTokenAccounts = async (
         final.sort((a, b) =>
           a.id.token_data_id.name.localeCompare(b.id.token_data_id.name)
         );
-        parsedTokenAccountsNFT = await Promise.all(
-          final.map(async (token) => {
-            const { creator, collection, name } = token.id.token_data_id;
-            const tokenData = await tokenClient.getTokenData(
-              creator,
-              collection,
-              name
-            );
-            return createNFTParsedTokenAccount(
-              walletAddress,
-              creator,
-              token.amount,
-              0,
-              Number(token.amount),
-              token.amount,
-              name,
-              undefined,
-              name,
-              tokenData.uri,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              collection,
-              Number(token.id.property_version)
-            );
-          })
+        console.log(final);
+        parsedTokenAccountsNFT.push(
+          ...(await Promise.all(
+            final.map(async (token) => {
+              const { creator, collection, name } = token.id.token_data_id;
+              const tokenData = await tokenClient.getTokenData(
+                creator,
+                collection,
+                name
+              );
+              return createNFTParsedTokenAccount(
+                walletAddress,
+                creator,
+                token.amount,
+                0,
+                Number(token.amount),
+                token.amount,
+                name,
+                collection, // symbol - show collection for display purposes
+                name,
+                tokenData.uri,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                collection,
+                Number(token.id.property_version)
+              );
+            })
+          ))
         );
+        dispatch(receiveSourceParsedTokenAccountsNFT(parsedTokenAccountsNFT));
       }
-      dispatch(receiveSourceParsedTokenAccountsNFT(parsedTokenAccountsNFT));
-      return;
-    }
-    const resources = await client.getAccountResources(walletAddress);
-    const coinResources = resources.filter((r) =>
-      r.type.startsWith("0x1::coin::CoinStore<")
-    );
-    const parsedTokenAccounts: ParsedTokenAccount[] = [];
-    for (const cr of coinResources) {
-      try {
-        const address = cr.type.substring(
-          cr.type.indexOf("<") + 1,
-          cr.type.length - 1
-        );
-        const coinType = `0x1::coin::CoinInfo<${address}>`;
-        const coinStore = `0x1::coin::CoinStore<${address}>`;
-        const value = (
-          (await client.getAccountResource(walletAddress, coinStore))
-            .data as any
-        ).coin.value;
-        const assetInfo = (
-          await client.getAccountResource(address.split("::")[0], coinType)
-        ).data as AptosCoinResourceReturn;
-        if (value && value !== "0" && assetInfo) {
-          const parsedTokenAccount = createParsedTokenAccount(
-            walletAddress,
-            address,
-            value,
-            assetInfo.decimals,
-            Number(formatUnits(value, assetInfo.decimals)),
-            formatUnits(value, assetInfo.decimals),
-            assetInfo.symbol,
-            assetInfo.name
+    } else {
+      const resources = await client.getAccountResources(walletAddress);
+      const coinResources = resources.filter((r) =>
+        r.type.startsWith("0x1::coin::CoinStore<")
+      );
+      const parsedTokenAccounts: ParsedTokenAccount[] = [];
+      for (const cr of coinResources) {
+        try {
+          const address = cr.type.substring(
+            cr.type.indexOf("<") + 1,
+            cr.type.length - 1
           );
-          if (address === APTOS_NATIVE_TOKEN_KEY) {
-            parsedTokenAccount.logo = aptosIcon;
-            parsedTokenAccount.isNativeAsset = true;
-            parsedTokenAccounts.unshift(parsedTokenAccount);
-          } else {
-            parsedTokenAccounts.push(parsedTokenAccount);
+          const coinType = `0x1::coin::CoinInfo<${address}>`;
+          const coinStore = `0x1::coin::CoinStore<${address}>`;
+          const value = (
+            (await client.getAccountResource(walletAddress, coinStore))
+              .data as any
+          ).coin.value;
+          const assetInfo = (
+            await client.getAccountResource(address.split("::")[0], coinType)
+          ).data as AptosCoinResourceReturn;
+          if (value && value !== "0" && assetInfo) {
+            const parsedTokenAccount = createParsedTokenAccount(
+              walletAddress,
+              address,
+              value,
+              assetInfo.decimals,
+              Number(formatUnits(value, assetInfo.decimals)),
+              formatUnits(value, assetInfo.decimals),
+              assetInfo.symbol,
+              assetInfo.name
+            );
+            if (address === APTOS_NATIVE_TOKEN_KEY) {
+              parsedTokenAccount.logo = aptosIcon;
+              parsedTokenAccount.isNativeAsset = true;
+              parsedTokenAccounts.unshift(parsedTokenAccount);
+            } else {
+              parsedTokenAccounts.push(parsedTokenAccount);
+            }
           }
+        } catch (error) {
+          console.error(error);
         }
-      } catch (error) {
-        console.error(error);
       }
+      dispatch(receiveSourceParsedTokenAccounts(parsedTokenAccounts));
     }
-    dispatch(receiveSourceParsedTokenAccounts(parsedTokenAccounts));
-  } catch (e) {
-    console.error(e);
-    dispatch(
-      nft
-        ? errorSourceParsedTokenAccountsNFT("Failed to load NFT metadata")
-        : errorSourceParsedTokenAccounts("Failed to load token metadata.")
-    );
+  } catch (e: any) {
+    if (nft && e instanceof ApiError && e.errorCode === "resource_not_found") {
+      // No NFTs found for this account
+      dispatch(receiveSourceParsedTokenAccountsNFT([]));
+    } else {
+      console.error(e);
+      dispatch(
+        nft
+          ? errorSourceParsedTokenAccountsNFT("Failed to load NFT metadata")
+          : errorSourceParsedTokenAccounts("Failed to load token metadata.")
+      );
+    }
   }
 };
 

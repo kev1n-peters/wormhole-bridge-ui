@@ -416,8 +416,7 @@ function useFetchTargetAsset(nft?: boolean) {
                 getAptosClient(),
                 getNFTBridgeAddressForChain(targetChain),
                 originChain,
-                // TODO: we shouldn't have to do this
-                "0x" + originAsset
+                hexToUint8Array(originAsset)
               )
             : await getForeignAssetAptos(
                 getAptosClient(),
@@ -431,7 +430,7 @@ function useFetchTargetAsset(nft?: boolean) {
                 receiveDataWrapper({
                   doesExist: !!asset,
                   address:
-                  // TODO: what should we set for Aptos NFTs?
+                    // TODO: what should we set for Aptos NFTs?
                     asset && !nft
                       ? `${ensureHexPrefix(asset as string)}::coin::T`
                       : null,

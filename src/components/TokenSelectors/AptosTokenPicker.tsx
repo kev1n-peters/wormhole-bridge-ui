@@ -91,7 +91,7 @@ export default function AptosTokenPicker(props: AptosTokenPickerProps) {
         }
       })();
     },
-    [walletAddress]
+    [walletAddress, nft]
   );
 
   const isSearchableAddress = useCallback((address: string) => {
@@ -102,10 +102,8 @@ export default function AptosTokenPicker(props: AptosTokenPickerProps) {
     ({ account }: { account: NFTParsedTokenAccount }) => {
       return BasicAccountRender(account, returnsFalse, !!nft);
     },
-    []
+    [nft]
   );
-
-  console.log(tokenAccounts?.data);
 
   return (
     <TokenPicker
