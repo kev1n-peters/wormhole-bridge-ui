@@ -2,6 +2,7 @@ const CopyPlugin = require("copy-webpack-plugin");
 const { ProvidePlugin } = require("webpack");
 
 module.exports = function override(config, env) {
+  console.log(env);
   return {
     ...config,
     module: {
@@ -76,7 +77,7 @@ module.exports = function override(config, env) {
     ignoreWarnings: [/Failed to parse source map/],
     optimization: {
       ...config.optimization,
-      splitChunks: {
+      splitChunks: env === "production" ? {
         chunks: "all",
         minSize: 1024 * 20,
         maxSize: 1024 * 1024 * 20,
@@ -97,7 +98,7 @@ module.exports = function override(config, env) {
             reuseExistingChunk: true,
           },
         },
-      },
+      } : config.optimization.splitChunks,
     },
   };
 };
